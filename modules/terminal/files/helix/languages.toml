@@ -1,0 +1,37 @@
+# Language servers by name; install the ones you use (mise, npm, cargo or pacman).
+# `hx --health <lang>` shows what a language is missing.
+
+[language-server.rust-analyzer.config.check]
+command = "clippy"
+
+[[language]]
+name = "rust"
+auto-format = true
+
+[[language]]
+name = "bash"
+auto-format = false
+language-servers = ["bash-language-server"]
+
+[[language]]
+name = "typescript"
+auto-format = false
+language-servers = ["typescript-language-server"]
+
+[[language]]
+name = "tsx"
+auto-format = false
+language-servers = ["typescript-language-server"]
+
+[[language]]
+name = "json"
+language-servers = ["vscode-json-language-server"]
+
+# QML (Quickshell). qmlls ships with Qt6 — path varies, so it is
+# resolved from PATH and simply stays unused if absent.
+[language-server.qmlls]
+command = "qmlls"
+
+[[language]]
+name = "qml"
+language-servers = ["qmlls"]

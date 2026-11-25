@@ -1,0 +1,7 @@
+# atuin (shell history search on Ctrl+R / Up), from the setup kit.
+# Commands typed with a leading space stay out of the history, as in bash.
+history_filter = [
+  "^\\s",
+]
+# Enter runs the command you picked; Tab puts it on the line to edit first.
+enter_accept = true

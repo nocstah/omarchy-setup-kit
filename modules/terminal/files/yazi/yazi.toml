@@ -1,0 +1,12 @@
+# Markdown files open rendered in glow's pager (Enter); `O` still offers the
+# editor and the system opener for when editing is the point.
+[opener]
+markdown = [
+	{ run = 'glow -p "$@"', block = true, desc = "View rendered (glow)" },
+]
+
+[open]
+prepend_rules = [
+	{ url = "*.md", use = [ "markdown", "edit", "open" ] },
+	{ url = "*.markdown", use = [ "markdown", "edit", "open" ] },
+]

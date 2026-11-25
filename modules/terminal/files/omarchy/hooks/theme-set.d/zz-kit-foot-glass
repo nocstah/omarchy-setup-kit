@@ -1,0 +1,85 @@
+#!/bin/bash
+
+# Setup kit: see-through foot terminals that follow the theme. Runs after each
+# `omarchy theme set` (and once from the kit's installer).
+#
+# Glass on dark themes, less on light ones, unless the theme's own foot.ini
+# sets an alpha, which then wins. foot keeps the alpha per colour section, so
+# Omarchy's generated [colors-dark] palette is copied to [colors-light] and
+# ~/.config/foot/foot.ini gets both alpha lines rewritten here.
+#
+# Running windows: foot can't reload its config, but SIGUSR1/SIGUSR2 switch
+# its colour section, omarchy-theme-set-foot repaints the colours, and an
+# OSC 11 with an alpha ([62]#RRGGBB, see foot-ctlseqs(7)) sent to each foot
+# pty sets the new alpha. New windows just read the rewritten foot.ini.
+
+set -euo pipefail
+
+# Change these two to taste (1.0 = solid).
+DEFAULT_DARK=0.62
+DEFAULT_LIGHT=0.72
+
+theme_dir="$HOME/.local/state/omarchy/current/theme"
+theme_foot="$theme_dir/foot.ini"
+foot_ini="$HOME/.config/foot/foot.ini"
+
+[[ -f $theme_dir/colors.toml && -f $theme_foot ]] || exit 0
+
+mode=$(sed -n 's/^mode[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$theme_dir/colors.toml")
+[[ $mode == light ]] || mode=dark
+
+# Mirror the generated [colors-dark] palette into [colors-light].
+if ! grep -q '^\[colors-light\]' "$theme_foot"; then
+  {
+    echo
+    echo "[colors-light]"
+    sed -n '/^\[colors-dark\]/,/^\[/{/^\[/d; p}' "$theme_foot"
+  } >>"$theme_foot"
+fi
+
+# Theme-supplied alpha wins over the mode defaults; absent, defaults return.
+theme_alpha=$(sed -n '/^\[colors-dark\]/,/^\[/s/^alpha=\([0-9.]*\)[[:space:]]*$/\1/p' "$theme_foot" | head -1)
+if [[ -n $theme_alpha ]]; then
+  dark_alpha=$theme_alpha
+  light_alpha=$theme_alpha
+else
+  dark_alpha=$DEFAULT_DARK
+  light_alpha=$DEFAULT_LIGHT
+fi
+sed -i "/^\[colors-dark\]/,/^\[/s/^alpha=.*/alpha=$dark_alpha/" "$foot_ini"
+sed -i "/^\[colors-light\]/,\$s/^alpha=.*/alpha=$light_alpha/" "$foot_ini"
+
+# New windows.
+sed -i "s/^initial-color-theme=.*/initial-color-theme=$mode/" "$foot_ini"
+
+# Windows already open.
+if pgrep -x foot >/dev/null; then
+  [[ $mode == light ]] && pkill -USR2 -x foot || pkill -USR1 -x foot || true
+  sleep 0.2
+  omarchy-theme-set-foot
+
+  # Live alpha: repaint each foot pty's background at the new alpha. The
+  # plain-hex OSC 11 omarchy-theme-set-foot just sent resets nothing here —
+  # this follow-up is what carries the alpha.
+  alpha_for_mode=$dark_alpha
+  [[ $mode == light ]] && alpha_for_mode=$light_alpha
+  bg=$(sed -n "/^\[colors-$mode\]/,/^\[/s/^background=\([0-9A-Fa-f]\{6\}\)[[:space:]]*$/\1/p" "$theme_foot" | head -1)
+  if [[ -n $bg ]]; then
+    pct=$(awk -v a="$alpha_for_mode" 'BEGIN{printf "%d", a*100}')
+    osc=$(printf '\033]11;[%d]#%s\007' "$pct" "$bg")
+    for foot_pid in $(pgrep -x foot); do
+      # Omarchy's pop-up terminals and the notes pad stay opaque (see the kit's
+      # windows.lua and pads.lua); the Omarchy agent follows the theme like any terminal.
+      if tr '\0' ' ' <"/proc/$foot_pid/cmdline" 2>/dev/null |
+        grep -qE -- '--app-id[= ](org\.omarchy\.|pad-notes)' &&
+        ! tr '\0' ' ' <"/proc/$foot_pid/cmdline" 2>/dev/null | grep -q -- '--app-id=org\.omarchy\.agent'; then
+        "$HOME/.local/share/setup-kit/bin/foot-popup-opaque" "$foot_pid" || true
+        continue
+      fi
+      for child_pid in $(pgrep -P "$foot_pid"); do
+        tty=$(readlink "/proc/$child_pid/fd/1" 2>/dev/null) || continue
+        [[ $tty == /dev/pts/* ]] && printf '%s' "$osc" >"$tty" || true
+      done
+    done
+  fi
+fi

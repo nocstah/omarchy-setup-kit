@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# thumb-wheel m+1|m-1: a mouse thumb wheel (sideways scroll) bound in Hyprland by
+# the setup kit (mouse.lua, option thumb_wheel). Over a window group it flips the
+# group's tabs, elsewhere it walks the focused monitor's workspaces.
+#
+# The wheel has no notches and sends a burst of events per flick, so a jump
+# needs 3 events in the same direction within 300 ms (a graze sends 1-2), and
+# is followed by 250 ms of quiet so one flick moves one step. A long spin still
+# travels. Hyprland 0.56 reads `hyprctl dispatch` arguments as Lua, hence the
+# hl.dsp forms below.
+set -u
+
+THRESHOLD=3   # events to arm a jump
+WINDOW=300    # ms between events before the burst counts as stale
+COOLDOWN=250  # ms of silence after a fire
+
+f="${XDG_RUNTIME_DIR:-/tmp}/hypr-thumbwheel-last"
+# A flick spawns several instances at once; without a lock they all read the
+# same count before any writes it back, so it sticks at 1 and nothing ever
+# fires (2026-08-20, found via the state file). Serialize the whole
+# read-modify-write; take `now` AFTER acquiring the lock so queued instances
+# use their real time. Later burst events (post-fire) queue, see the fresh
+# fire stamp, and exit on cooldown.
+exec 9>"$f.lock"
+flock 9
+now=$(date +%s%3N)
+# state: <last_fire_ms> <count> <last_event_ms> <dir>
+{ read -r fire count lastev dir <"$f"; } 2>/dev/null \
+    || { fire=0; count=0; lastev=0; dir=; }
+[ "$now" -lt "$((fire + COOLDOWN))" ] && exit 0
+if [ "$1" != "${dir:-}" ] || [ "$now" -gt "$((lastev + WINDOW))" ]; then
+    count=0
+fi
+count=$((count + 1))
+if [ "$count" -lt "$THRESHOLD" ]; then
+    printf '%s %s %s %s\n' "$fire" "$count" "$now" "$1" >"$f"
+    exit 0
+fi
+printf '%s 0 %s %s\n' "$now" "$now" "$1" >"$f"
+# lock released here (fd 9 closes on exec/exit) — the dispatch below may be
+# slow (two hyprctl round-trips) and must not stall the queued instances.
+exec 9>&-
+
+# Over the focused GROUPED window (cursor inside its box, extended up ~32px
+# to cover the tab bar itself), the wheel flips tabs instead. Same debounce:
+# one flip per ratchet-less flick, a deliberate spin still walks the group.
+# HOVER decides, not focus — focus alone made the wheel tab-only everywhere
+# on any workspace holding a group (bar included), killing workspace cycling
+# there (2026-08-20). Focus still picks WHICH group: changegroupactive acts
+# on the focused one, and follow_mouse=1 keeps hover and focus aligned.
+read -r n ax ay aw ah < <(hyprctl -j activewindow | jq -r \
+    '"\(.grouped | length) \(.at[0]) \(.at[1]) \(.size[0]) \(.size[1])"')
+if [ "${n:-0}" -ge 2 ]; then
+    read -r cx cy < <(hyprctl -j cursorpos | jq -r '"\(.x) \(.y)"')
+    if [ "$cx" -ge "$ax" ] && [ "$cx" -lt "$((ax + aw))" ] \
+        && [ "$cy" -ge "$((ay - 32))" ] && [ "$cy" -lt "$((ay + ah))" ]; then
+        case $1 in
+            m+1) hyprctl dispatch 'hl.dsp.group.next()' ;;
+            m-1) hyprctl dispatch 'hl.dsp.group.prev()' ;;
+        esac
+        exit 0
+    fi
+fi
+hyprctl dispatch "hl.dsp.focus({workspace=\"$1\"})"

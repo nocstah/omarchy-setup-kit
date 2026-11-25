@@ -1,0 +1,35 @@
+#!/bin/bash
+
+# foot-popup-opaque <foot-pid>
+#
+# Repaint one foot window's background fully opaque, in the current theme's
+# background colour. The setup kit runs it for Omarchy's pop-up terminals
+# (app ids org.omarchy.*) and the notes pad, which are foot underneath and so
+# would take a see-through terminal setting too.
+#
+# A Hyprland rule can't do this: foot hands over a premultiplied buffer, so
+# ignoring its alpha shows a darkened background. foot's OSC 11 with an alpha
+# ([100]#RRGGBB, see foot-ctlseqs(7)) repaints a running window. It goes to the
+# pty of foot's child; the window can map before foot has started it, hence
+# the short wait.
+
+set -u
+
+pid=${1:?usage: foot-popup-opaque <foot-pid>}
+theme_foot="$HOME/.local/state/omarchy/current/theme/foot.ini"
+
+bg=$(sed -n '/^\[colors-dark\]/,/^\[/s/^background=\([0-9A-Fa-f]\{6\}\)[[:space:]]*$/\1/p' "$theme_foot" 2>/dev/null | head -1)
+[[ -n $bg ]] || exit 0
+
+osc=$(printf '\033]11;[100]#%s\007' "$bg")
+
+for _ in $(seq 40); do # up to ~2 s
+  for child in $(pgrep -P "$pid"); do
+    tty=$(readlink "/proc/$child/fd/1" 2>/dev/null) || continue
+    [[ $tty == /dev/pts/* ]] || continue
+    printf '%s' "$osc" >"$tty" && exit 0
+  done
+  kill -0 "$pid" 2>/dev/null || exit 0
+  sleep 0.05
+done
+exit 1

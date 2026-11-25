@@ -1,0 +1,6 @@
+# Helix settings for the notes pad (Super+Shift+N) only: save when the pad
+# loses focus and 2 s after you stop typing, so hiding it never loses a note.
+[editor.auto-save]
+focus-lost = true
+after-delay.enable = true
+after-delay.timeout = 2000

@@ -1,0 +1,15 @@
+// US layout with æ ø å on AltGr at the Norwegian keys:
+//   AltGr+;  = ø     AltGr+'  = æ     AltGr+[  = å      (Shift for capitals)
+// altgr-intl puts them on Z/L/W instead, which fights the habit from a real
+// Norwegian keyboard. Plain US underneath, none of altgr-intl's dead keys.
+// Use it with keyboard_layout = "usno" (or "usno,no") in ~/.config/hypr/kit/options.lua;
+// libxkbcommon finds it in ~/.config/xkb by itself.
+default partial alphanumeric_keys
+xkb_symbols "basic" {
+    include "us(basic)"
+    name[Group1] = "English (US, Norwegian aeoaa on AltGr)";
+    key <AC10> { [ semicolon,   colon,     oslash,      Oslash ] };
+    key <AC11> { [ apostrophe,  quotedbl,  ae,          AE     ] };
+    key <AD11> { [ bracketleft, braceleft, aring,       Aring  ] };
+    include "level3(ralt_switch)"
+};

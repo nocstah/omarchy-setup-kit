@@ -1,0 +1,7 @@
+# Your dictionary for dictation: one word or name per line, '#' for comments.
+# The cleanup spells these exactly as written here, and puts them back when
+# Whisper hears something close (a name heard as a common word).
+# Add names, project words and jargon it keeps getting wrong, for example:
+# Hyprland
+# Omarchy
+# Claude Code
